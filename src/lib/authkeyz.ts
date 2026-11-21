@@ -4,6 +4,7 @@ interface AuthKeyzOptions {
   name: string;
   ownerid: string;
   url?: string;
+  public_key?: string;
 }
 
 interface AuthKeyzUserData {
@@ -29,7 +30,7 @@ export default class AuthKeyz {
   private name: string;
   private ownerid: string;
   private url: string = "https://authkeyz.bond/api/1.3/";
-  private public_key: string = "";
+  private public_key: string = "8e8d104f3ce9b29b411cfcf8e049d19fed42e63caa275e111bfa71ef3d237041";
   private loggingEnabled: boolean = true;
 
   private sessionid?: string;
@@ -42,6 +43,7 @@ export default class AuthKeyz {
     this.name = options.name;
     this.ownerid = options.ownerid;
     this.url = options.url ?? "https://authkeyz.bond/api/1.3/";
+    this.public_key = options.public_key ?? "8e8d104f3ce9b29b411cfcf8e049d19fed42e63caa275e111bfa71ef3d237041";
 
     if (!this.name || !this.ownerid) {
       throw new Error("Name and ownerid are required");
