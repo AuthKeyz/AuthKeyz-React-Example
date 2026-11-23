@@ -64,11 +64,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error("[AUTH] Failed to fetch stats:", error);
           }
 
-          const user = sessionStorage.getUser();
-          if (user) {
-            console.log("[AUTH] Found saved user:", user)
-            setUser(user);
-            setIsAuthenticated(true);
+          const savedUser = sessionStorage.getUser();
+          if (savedUser) {
+            const isExpired = savedUser.expires && Number(savedUser.expires) * 1000 <= Date.now();
+            if (isExpired) {
+              sessionStorage.removeUser();
+            } else {
+              console.log("[AUTH] Found valid saved user:", savedUser);
+              setUser(savedUser);
+              setIsAuthenticated(true);
+            }
           }
         } else {
           console.log("[AUTH] AuthKeyz init failed:", result.message)

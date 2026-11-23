@@ -12,6 +12,8 @@ export function Login() {
   const [upgradeLicense, setUpgradeLicense] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState(0);
   const [showTwoFA, setShowTwoFA] = useState(false);
   const [activeTab, setActiveTab] = useState<'login' | 'upgrade' | 'license'>('login');
   const [twoFAData, setTwoFAData] = useState<{
@@ -23,7 +25,29 @@ export function Login() {
 
   const { login, register, licenseAuth, upgrade } = useAuth();
 
+  const checkLockout = (): boolean => {
+    const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+    if (remaining > 0) {
+      setError(`Too many failed attempts. Locked for ${remaining}s.`);
+      return true;
+    }
+    return false;
+  };
+
+  const recordFail = (msg: string) => {
+    const nextFails = failedAttempts + 1;
+    if (nextFails >= 3) {
+      setFailedAttempts(0);
+      setLockoutUntil(Date.now() + 30000);
+      setError(`${msg} (Locked out for 30s due to 3 failed attempts)`);
+    } else {
+      setFailedAttempts(nextFails);
+      setError(msg);
+    }
+  };
+
   const handleLogin = async () => {
+    if (checkLockout()) return;
     if (!username || !password) {
       setError("Username and password are required for login.");
       return;
@@ -34,12 +58,13 @@ export function Login() {
     const result = await login(username, password);
 
     if (result.success) {
+      setFailedAttempts(0);
       window.location.href = "/dashboard";
     } else if (result.needsTwoFA) {
       setTwoFAData({ username, password, loginType: 'login' });
       setShowTwoFA(true);
     } else {
-      setError(result.message || "Login failed.");
+      recordFail(result.message || "Login failed.");
     }
   };
 
