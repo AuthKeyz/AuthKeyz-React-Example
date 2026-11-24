@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "authkeyz.cc React Example",
-  description: "authkeyz.cc React Example",
+  title: "AuthKeyz React Example",
+  description: "AuthKeyz React Example",
 };
 
 export default function RootLayout({

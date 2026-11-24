@@ -19,30 +19,17 @@ export function TwoFASetup({ onClose, mode }: TwoFASetupProps) {
 
   const { enable2FA, disable2FA } = useAuth();
 
-  // Generate QR code image when qrCodeData is available
+  // Generate QR code image locally in browser when qrCodeData is available (with fallback)
   useEffect(() => {
     const generateQRCode = async () => {
       if (qrCodeData && typeof window !== 'undefined') {
         try {
-          // Use a simple canvas approach to generate QR code
-          // For production, you'd want to use a proper QR code library
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-
-          // Simple QR code placeholder - in production use QRCode.js or similar
-          canvas.width = 200;
-          canvas.height = 200;
-          
-          // Fill white background
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, 200, 200);
-          
-          // For now, let's use a QR code API service
+          const QRCode = await import('qrcode');
+          const dataUrl = await QRCode.toDataURL(qrCodeData, { width: 200, margin: 2 });
+          setQrCodeImage(dataUrl);
+        } catch {
           const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeData)}`;
           setQrCodeImage(qrApiUrl);
-        } catch (error) {
-          console.error('Failed to generate QR code:', error);
         }
       }
     };

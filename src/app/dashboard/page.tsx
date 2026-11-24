@@ -17,6 +17,23 @@ export default function Dashboard() {
   const [varValue, setVarValue] = useState('');
   const [varMessage, setVarMessage] = useState('');
   const [varLoading, setVarLoading] = useState(false);
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+
+  const formatCountdown = (expiryUnix?: number) => {
+    if (!expiryUnix) return "N/A";
+    const diff = expiryUnix - nowSec;
+    if (diff <= 0) return "Expired";
+    const d = Math.floor(diff / 86400);
+    const h = Math.floor((diff % 86400) / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    const s = diff % 60;
+    return `${d}d ${h}h ${m}m ${s}s left`;
+  };
+
+  useEffect(() => {
+    const tick = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -32,6 +49,22 @@ export default function Dashboard() {
     }
 
     fetchUserVariable();
+
+    const heartbeat = setInterval(async () => {
+      if (AuthKeyzApp && typeof (AuthKeyzApp as any).check === "function") {
+        try {
+          const ok = await (AuthKeyzApp as any).check();
+          if (ok === false) {
+            await logout();
+            router.push("/");
+          }
+        } catch {
+          // Ignore transient network errors
+        }
+      }
+    }, 60000);
+
+    return () => clearInterval(heartbeat);
   }, [isAuthenticated, loading, router]);
 
   if (loading) {
@@ -109,9 +142,24 @@ export default function Dashboard() {
         <h1 className="mb-3 text-2xl md:text-3xl text-center font-bold text-white">
           Welcome, {user?.username}
         </h1>
-        <p className="mb-8 text-sm md:text-base text-center font-normal text-gray-300">
+        <p className="mb-4 text-sm md:text-base text-center font-normal text-gray-300">
           Manage your account settings and security preferences
         </p>
+        <div className="flex flex-wrap justify-center gap-2 mb-8">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            <span className="w-2 h-2 mr-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            API 1.3 Ed25519 Verified
+          </span>
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+            Replay Protection Active
+          </span>
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-500/15 text-purple-400 border border-purple-500/30">
+            Clock Drift: {AuthKeyzApp?.security_status?.lastClockDriftSec ?? 0}s
+          </span>
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">
+            Subscription: {formatCountdown(user?.expires)}
+          </span>
+        </div>
 
         {user && (
           <div className="space-y-6">

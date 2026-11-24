@@ -222,8 +222,6 @@ export default class AuthKeyz {
     };
 
     const response = await this.__do_request(post_data) as any;
-    console.log(post_data)
-    console.log(response)
 
     if (response["success"] === true) {
       return true;
@@ -516,6 +514,70 @@ export default class AuthKeyz {
     }
   }
 
+  private seenSignatures: Set<string> = new Set();
+  public security_status = {
+    ed25519Verified: false,
+    replayGuardActive: true,
+    lastClockDriftSec: 0,
+  };
+
+  private hexToBytes(hex: string): Uint8Array {
+    const clean = hex.trim();
+    if (clean.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(clean)) {
+      throw new Error("Invalid hex encoding in cryptographic header");
+    }
+    const bytes = new Uint8Array(clean.length / 2);
+    for (let i = 0; i < clean.length; i += 2) {
+      bytes[i / 2] = parseInt(clean.substring(i, i + 2), 16);
+    }
+    return bytes;
+  }
+
+  private async verifyEd25519(rawBody: string, sigHex: string, timestamp: string): Promise<boolean> {
+    if (!/^\d+$/.test(timestamp.trim())) {
+      throw new Error("Invalid x-signature-timestamp format");
+    }
+    const serverTimeSec = Number(timestamp.trim());
+    const nowSec = Math.floor(Date.now() / 1000);
+    const drift = Math.abs(nowSec - serverTimeSec);
+    this.security_status.lastClockDriftSec = drift;
+    if (drift > 305) {
+      throw new Error(`Clock skew too large (${drift}s). Please sync your device time.`);
+    }
+
+    const replayKey = `${timestamp.trim()}:${sigHex.trim().toLowerCase()}`;
+    if (this.seenSignatures.has(replayKey)) {
+      throw new Error("Replay attack detected: duplicate Ed25519 response signature.");
+    }
+
+    const pubKeyHex = this.public_key || "8e8d104f3ce9b29b411cfcf8e049d19fed42e63caa275e111bfa71ef3d237041";
+    const pubKeyBytes = this.hexToBytes(pubKeyHex);
+    const sigBytes = this.hexToBytes(sigHex);
+    if (pubKeyBytes.length !== 32 || sigBytes.length !== 64) {
+      return false;
+    }
+
+    const messageBytes = new TextEncoder().encode(timestamp.trim() + rawBody);
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      pubKeyBytes.buffer as ArrayBuffer,
+      { name: "Ed25519" },
+      false,
+      ["verify"]
+    );
+    const isValid = await crypto.subtle.verify(
+      "Ed25519",
+      cryptoKey,
+      sigBytes.buffer as ArrayBuffer,
+      messageBytes.buffer as ArrayBuffer
+    );
+    if (isValid) {
+      this.seenSignatures.add(replayKey);
+      this.security_status.ed25519Verified = true;
+    }
+    return isValid;
+  }
+
   private async __do_request(data: any) {
     try {
       const response = await fetch(this.url, {
@@ -531,10 +593,24 @@ export default class AuthKeyz {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
 
-      const responseData = await response.json();
+      const rawBody = await response.text();
+      const responseData = JSON.parse(rawBody);
       const dontRunExtra = ["log", "file", "2faenable", "2fadisable"];
       if (dontRunExtra.includes(data.type)) {
         return responseData;
+      }
+
+      const edSig = response.headers.get("x-signature-ed25519");
+      const edTs = response.headers.get("x-signature-timestamp");
+      if (edSig && edTs) {
+        const valid = await this.verifyEd25519(rawBody, edSig, edTs);
+        if (!valid) {
+          throw new Error("Ed25519 signature verification failed. Response may have been tampered with.");
+        }
+      }
+
+      if (responseData && responseData.ownerid && responseData.ownerid !== this.ownerid) {
+        throw new Error("Application ownerid mismatch in server response.");
       }
 
       return responseData;
@@ -562,15 +638,18 @@ export default class AuthKeyz {
   }
 
   private __load_user_data(data: any) {
+    const firstSub = Array.isArray(data["subscriptions"]) && data["subscriptions"].length > 0
+      ? data["subscriptions"][0]
+      : null;
     this.user_data = {
       username: data["username"],
       ip: data["ip"],
       hwid: data["hwid"] || "N/A",
-      expires: data["subscriptions"][0]["expiry"],
+      expires: firstSub?.["expiry"] ?? 0,
       createdate: data["createdate"],
       lastlogin: data["lastlogin"],
-      subscription: data["subscriptions"][0]["subscription"],
-      subscriptions: data["subscriptions"],
+      subscription: firstSub?.["subscription"] ?? "N/A",
+      subscriptions: data["subscriptions"] ?? [],
     }
   }
 }
